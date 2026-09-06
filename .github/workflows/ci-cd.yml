@@ -2,20 +2,25 @@ name: Build Scratch iOS IPA
 
 on:
   push:
+    branches: [ main, develop ]name: Build Scratch iOS IPA
+
+on:
+  push:
     branches: [ main, develop ]
+  workflow_dispatch:
 
 jobs:
   build-ios:
-    runs-on: macos-latest # Sử dụng môi trường máy Mac đám mây của GitHub
+    runs-on: macos-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20 # Nâng lên Node 20 để tránh lỗi EBADENGINE
 
       - name: Install Dependencies & Build Web
         run: |
@@ -27,6 +32,13 @@ jobs:
           npm install @capacitor/core @capacitor/cli @capacitor/ios
           npx cap init ScratchApp com.scratch.app --web-dir build
           npx cap add ios
+
+      - name: Fix Podfile iOS Deployment Target
+        run: |
+          # Cập nhật platform target trong Podfile lên iOS 14.0
+          sed -i '' "s/platform :ios, '.*'/platform :ios, '14.0'/" ios/App/Podfile
+          
+          # Cập nhật lại dependencies cho Capacitor
           npx cap copy ios
 
       - name: Build Unsigned iOS App

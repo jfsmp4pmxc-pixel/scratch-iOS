@@ -1,93 +1,56 @@
-name: CI/CD
+name: Build Scratch iOS IPA
 
 on:
-    pull_request: # Runs whenever a pull request is created or updated (including from another fork)
-    push: # Runs whenever a commit is pushed to the repository...
-        branches: [master, develop, hotfix/*] # ...on any of these branches
-    workflow_dispatch: # Allows you to run this workflow manually from the Actions tab
-concurrency:
-    group: "${{ github.workflow }} @ ${{ github.head_ref || github.ref }}"
-    cancel-in-progress: true
-
-permissions:
-    contents: write # publish a GitHub release
-    pages: write # deploy to GitHub Pages
-    issues: write # comment on released issues
-    pull-requests: write # comment on released pull requests
+  push:
+    branches: [ main, develop ]
+  workflow_dispatch: # Cho phép nhấn nút kích hoạt build thủ công
 
 jobs:
-    ci-cd:
-        runs-on: ubuntu-latest
-        env:
-            DETECT_CHROMEDRIVER_VERSION: "true"
-            JEST_JUNIT_OUTPUT_DIR: test-results
-            NODE_OPTIONS: --max-old-space-size=4000
-        steps:
-            - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
-            - uses: actions/setup-node@26961cf329f22f6837d5f54c3efd76b480300ace # v4
-              with:
-                  cache: "npm"
-                  node-version-file: ".nvmrc"
-            - name: Info
-              run: |
-                  cat <<EOF
-                  Node version: $(node --version)
-                  NPM version: $(npm --version)
-                  GitHub ref: ${{ github.ref }}
-                  GitHub head ref: ${{ github.head_ref }}
-                  EOF
-            - name: Install Dependencies
-              run: npm ci
-            - name: Lint
-              run: npm run test:lint
-            - name: Run Unit Tests
-              env:
-                  JEST_JUNIT_OUTPUT_NAME: unit-results.xml
-                  JEST_JUNIT_OUTPUT_DIR: test-results/unit
-              run: npm run test:unit -- --reporters="default" --reporters="jest-junit" --coverage --coverageReporters=text --coverageReporters=lcov --maxWorkers="2"
-            - name: Run Build
-              env:
-                NODE_OPTIONS: --max-old-space-size=4000
-                NODE_ENV: production
-              run: npm run build
-            - name: Store Build Output
-              uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4
-              with:
-                name: build-output
-                path: ./build
-            - name: Store Dist Output
-              uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4
-              with:
-                name: dist-output
-                path: ./dist
-            - run: |
-                for F in chrome chromium chromedriver; do
-                    which $F && $F --version || echo Not found: $F
-                done
-            - name: Run Integration Tests
-              env:
-                  JEST_JUNIT_OUTPUT_NAME: results.txt
-                  JEST_JUNIT_OUTPUT_DIR: test-results/integration
-              run: npm run test:integration -- --reporters="default" --reporters="jest-junit"
-            - name: Store Test Results
-              if: always() # Even if tests fail
-              uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4
-              with:
-                name: test-output
-                path: ./test-results/* # Both unit and integration test results
-            - run: |
-                if [[ ${{contains(github.ref, 'hotfix')}}  ]]; then
-                sed -e "s|hotfix/REPLACE|${{ github.ref_name }}|" --in-place release.config.js
-                fi
-            - name: Semantic Release
-              env:
-                NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              run: npx --no -- semantic-release
-            - name: Deploy playground to GitHub Pages
-              uses: peaceiris/actions-gh-pages@373f7f263a76c20808c831209c920827a82a2847 # v3
-              if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
-              with:
-                github_token: ${{ secrets.GITHUB_TOKEN }}
-                publish_dir: ./build
-                full_commit_message: "Build for ${{ github.sha }} ${{ github.event.head_commit.message }}"
+  build-ios:
+    runs-on: macos-latest # Sử dụng môi trường máy Mac đám mây của GitHub
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install Dependencies & Build Web
+        run: |
+          npm install
+          BUILD_MODE=dist npm run build
+
+      - name: Setup Capacitor
+        run: |
+          npm install @capacitor/core @capacitor/cli @capacitor/ios
+          npx cap init ScratchApp com.scratch.app --web-dir build
+          npx cap add ios
+          npx cap copy ios
+
+      - name: Build Unsigned iOS App
+        run: |
+          cd ios/App
+          pod install
+          xcodebuild -workspace App.xcworkspace \
+                     -scheme App \
+                     -sdk iphoneos \
+                     -configuration Release \
+                     -derivedDataPath build \
+                     CODE_SIGN_IDENTITY="" \
+                     CODE_SIGNING_REQUIRED=NO \
+                     CODE_SIGNING_ALLOWED=NO
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -r ios/App/build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -r ScratchApp-Unsigned.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: Scratch-Unsigned-IPA
+          path: ScratchApp-Unsigned.ipa

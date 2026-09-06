@@ -1,4 +1,4 @@
-name: Build Scratch iOS IPAname: Build Scratch iOS IPA
+name: Build Scratch iOS IPA
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-ios:
-    runs-on: macos-latest
+    runs-on: macos-14
 
     steps:
       - name: Checkout code
@@ -23,17 +23,24 @@ jobs:
           npm install
           BUILD_MODE=dist npm run build
 
-      - name: Setup Capacitor
+      - name: Setup Capacitor CLI & Core
         run: |
-          npm install @capacitor/core@^5.0.0 @capacitor/cli@^5.0.0 @capacitor/ios@^5.0.0
+          npm install @capacitor/core@5 @capacitor/cli@5 @capacitor/ios@5
           npx cap init ScratchApp com.scratch.app --web-dir build
+
+      - name: Add iOS Platform
+        run: |
           npx cap add ios
 
-      - name: Fix Podfile iOS Target & Install Pods
+      - name: Fix Podfile Target & Install Pods
         run: |
+          sed -i '' "s/platform :ios, '.*'/platform :ios, '13.0'/" ios/App/Podfile
           cd ios/App
-          sed -i '' "s/platform :ios, '.*/platform :ios, '14.0'/" Podfile
           pod install
+
+      - name: Sync Capacitor Asset
+        run: |
+          npx cap copy ios
 
       - name: Build Unsigned iOS App
         run: |

@@ -3,7 +3,6 @@ name: Build Scratch iOS IPA
 on:
   push:
     branches: [ main, develop ]
-  workflow_dispatch: # Cho phép nhấn nút kích hoạt build thủ công
 
 jobs:
   build-ios:
@@ -11,7 +10,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
@@ -50,7 +49,7 @@ jobs:
           zip -r ScratchApp-Unsigned.ipa Payload
 
       - name: Upload IPA Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Scratch-Unsigned-IPA
           path: ScratchApp-Unsigned.ipa

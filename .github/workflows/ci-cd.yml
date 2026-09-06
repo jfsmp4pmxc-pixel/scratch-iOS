@@ -24,7 +24,7 @@ jobs:
       - name: Setup Capacitor CLI & Core
         run: |
           npm install @capacitor/core@5 @capacitor/cli@5 @capacitor/ios@5
-          npx cap init ScratchApp com.scratch.app --web-dir build
+          npx cap init Scratch com.b40ph4m.build.scratch --web-dir build
 
       - name: Add iOS Platform
         run: |

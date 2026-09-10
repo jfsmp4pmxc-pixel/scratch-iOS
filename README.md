@@ -3,5 +3,5 @@
 - Chỉ hỗ trợ IOS.
 
 ### Nhật ký thay đổi
-#### b0.1.4 (4) (beta):
+#### b1.0.4 (4) (beta):
 - thử nghiệm bản build

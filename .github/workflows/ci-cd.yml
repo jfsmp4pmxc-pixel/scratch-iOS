@@ -19,6 +19,7 @@ jobs:
       - name: Install Dependencies & Build Web
         run: |
           npm install
+          npm install @capacitor/filesystem@5
           BUILD_MODE=dist npm run build
 
       - name: Setup Capacitor CLI & Core
@@ -30,15 +31,20 @@ jobs:
         run: |
           npx cap add ios
 
+      - name: Patch Info.plist (File Sharing)
+        run: |
+          /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" ios/App/App/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" ios/App/App/Info.plist || true
+
       - name: Fix Podfile Target & Install Pods
         run: |
           sed -i '' "s/platform :ios, '.*'/platform :ios, '13.0'/" ios/App/Podfile
           cd ios/App
           pod install
 
-      - name: Sync Capacitor Asset
+      - name: Sync Capacitor Asset (bao gồm plugin)
         run: |
-          npx cap copy ios
+          npx cap sync ios
 
       - name: Build Unsigned iOS App
         run: |

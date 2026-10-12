@@ -6,7 +6,7 @@ import PropTypes from 'prop-types';
 import bindAll from 'lodash.bindall';
 import bowser from 'bowser';
 import React from 'react';
-
+import ProjectManager from '../project-manager/project-manager.jsx';
 import VM from 'scratch-vm';
 
 import Box from '../box/box.jsx';

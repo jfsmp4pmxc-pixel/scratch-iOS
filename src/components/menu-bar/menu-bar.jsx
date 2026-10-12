@@ -6,7 +6,7 @@ import PropTypes from 'prop-types';
 import bindAll from 'lodash.bindall';
 import bowser from 'bowser';
 import React from 'react';
-import ProjectManager from '../project-manager/project-manager.jsx';
+import ProjectManager from '../project-manager/project-manager.jsx'; // 👈 THÊM
 import VM from 'scratch-vm';
 
 import Box from '../box/box.jsx';
@@ -188,8 +188,14 @@ class MenuBar extends React.Component {
             'handleKeyPress',
             'handleRestoreOption',
             'getSaveToComputerHandler',
-            'restoreOptionMessage'
+            'restoreOptionMessage',
+            'handleOpenProjectManager',   // 👈 THÊM
+            'handleCloseProjectManager'   // 👈 THÊM
         ]);
+        // 👈 THÊM state
+        this.state = {
+            showProjectManager: false
+        };
     }
     componentDidMount () {
         document.addEventListener('keydown', this.handleKeyPress);
@@ -197,12 +203,15 @@ class MenuBar extends React.Component {
     componentWillUnmount () {
         document.removeEventListener('keydown', this.handleKeyPress);
     }
+    // 👈 THÊM: mở modal project manager
+    handleOpenProjectManager () {
+        this.setState({showProjectManager: true});
+    }
+    // 👈 THÊM: đóng modal project manager
+    handleCloseProjectManager () {
+        this.setState({showProjectManager: false});
+    }
     handleClickNew () {
-        // if the project is dirty, and user owns the project, we will autosave.
-        // but if they are not logged in and can't save, user should consider
-        // downloading or logging in first.
-        // Note that if user is logged in and editing someone else's project,
-        // they'll lose their work.
         const readyToReplaceProject = this.props.confirmReadyToReplaceProject(
             this.props.intl.formatMessage(sharedMessages.replaceProjectWarning)
         );
@@ -226,28 +235,27 @@ class MenuBar extends React.Component {
     }
     handleClickSeeCommunity (waitForUpdate) {
         if (this.props.shouldSaveBeforeTransition()) {
-            this.props.autoUpdateProject(); // save before transitioning to project page
-            waitForUpdate(true); // queue the transition to project page
+            this.props.autoUpdateProject();
+            waitForUpdate(true);
         } else {
-            waitForUpdate(false); // immediately transition to project page
+            waitForUpdate(false);
         }
     }
     handleClickShare (waitForUpdate) {
         if (!this.props.isShared) {
-            if (this.props.canShare) { // save before transitioning to project page
+            if (this.props.canShare) {
                 this.props.onShare();
             }
-            if (this.props.canSave) { // save before transitioning to project page
+            if (this.props.canSave) {
                 this.props.autoUpdateProject();
-                waitForUpdate(true); // queue the transition to project page
+                waitForUpdate(true);
             } else {
-                waitForUpdate(false); // immediately transition to project page
+                waitForUpdate(false);
             }
         }
     }
     handleSetMode (mode) {
         return () => {
-            // Turn on/off filters for modes.
             if (mode === '1920') {
                 document.documentElement.style.filter = 'brightness(.9)contrast(.8)sepia(1.0)';
                 document.documentElement.style.height = '100%';
@@ -259,7 +267,6 @@ class MenuBar extends React.Component {
                 document.documentElement.style.height = '';
             }
 
-            // Change logo for modes
             if (mode === '1990') {
                 document.getElementById('logo_img').src = ninetiesLogo;
             } else if (mode === '2020') {
@@ -329,16 +336,11 @@ class MenuBar extends React.Component {
     }
     buildAboutMenu (onClickAbout) {
         if (!onClickAbout) {
-            // hide the button
             return null;
         }
         if (typeof onClickAbout === 'function') {
-            // make a button which calls a function
             return <AboutButton onClick={onClickAbout} />;
         }
-        // assume it's an array of objects
-        // each item must have a 'title' FormattedMessage and a 'handleClick' function
-        // generate a menu with items for each object in the array
         return (
             <div
                 className={classNames(styles.menuBarItem, styles.hoverable, {
@@ -419,7 +421,6 @@ class MenuBar extends React.Component {
                 {remixMessage}
             </Button>
         );
-        // Show the About button only if we have a handler for it (like in the desktop app)
         const aboutButton = this.buildAboutMenu(this.props.onClickAbout);
         return (
             <Box
@@ -441,6 +442,14 @@ class MenuBar extends React.Component {
                                 src={this.props.logo}
                                 onClick={this.props.onClickLogo}
                             />
+                        </div>
+                        {/* 👈 THÊM nút Dự án ngay cạnh logo */}
+                        <div
+                            className={classNames(styles.menuBarItem, styles.hoverable, styles.projectManagerButton)}
+                            onClick={this.handleOpenProjectManager}
+                            title="Dự án của tôi"
+                        >
+                            📁 <span className={styles.collapsibleLabel}>Dự án</span>
                         </div>
                         {(this.props.canChangeTheme || this.props.canChangeLanguage) && (<SettingsMenu
                             canChangeLanguage={this.props.canChangeLanguage}
@@ -649,11 +658,9 @@ class MenuBar extends React.Component {
                                             <ShareButton
                                                 className={styles.menuBarButton}
                                                 isShared={this.props.isShared}
-                                                /* eslint-disable react/jsx-no-bind */
                                                 onClick={() => {
                                                     this.handleClickShare(waitForUpdate);
                                                 }}
-                                                /* eslint-enable react/jsx-no-bind */
                                             />
                                         )
                                     }
@@ -676,11 +683,9 @@ class MenuBar extends React.Component {
                                         waitForUpdate => (
                                             <CommunityButton
                                                 className={styles.menuBarButton}
-                                                /* eslint-disable react/jsx-no-bind */
                                                 onClick={() => {
                                                     this.handleClickSeeCommunity(waitForUpdate);
                                                 }}
-                                                /* eslint-enable react/jsx-no-bind */
                                             />
                                         )
                                     }
@@ -725,8 +730,6 @@ class MenuBar extends React.Component {
                     </div>
                 </div>
 
-                {/* show the proper UI in the account menu, given whether the user is
-                logged in, and whether a session is available to log in with */}
                 <div className={styles.accountInfoGroup}>
                     <div className={styles.menuBarItem}>
                         {this.props.canSave && (
@@ -735,7 +738,6 @@ class MenuBar extends React.Component {
                     </div>
                     {this.props.sessionExists ? (
                         this.props.username ? (
-                            // ************ user is logged in ************
                             <React.Fragment>
                                 <a href="/mystuff/">
                                     <div
@@ -766,8 +768,6 @@ class MenuBar extends React.Component {
                                 />
                             </React.Fragment>
                         ) : (
-                            // ********* user not logged in, but a session exists
-                            // ********* so they can choose to log in
                             <React.Fragment>
                                 <div
                                     className={classNames(
@@ -807,7 +807,6 @@ class MenuBar extends React.Component {
                             </React.Fragment>
                         )
                     ) : (
-                        // ******** no login session is available, so don't show login stuff
                         <React.Fragment>
                             {this.props.showComingSoon ? (
                                 <React.Fragment>
@@ -856,6 +855,13 @@ class MenuBar extends React.Component {
                 </div>
 
                 {aboutButton}
+
+                {/* 👈 THÊM: render modal khi mở */}
+                {this.state.showProjectManager && (
+                    <ProjectManager
+                        onClose={this.handleCloseProjectManager}
+                    />
+                )}
             </Box>
         );
     }
@@ -899,11 +905,11 @@ MenuBar.propTypes = {
     modeMenuOpen: PropTypes.bool,
     modeNow: PropTypes.bool,
     onClickAbout: PropTypes.oneOfType([
-        PropTypes.func, // button mode: call this callback when the About button is clicked
-        PropTypes.arrayOf( // menu mode: list of items in the About menu
+        PropTypes.func,
+        PropTypes.arrayOf(
             PropTypes.shape({
-                title: PropTypes.string, // text for the menu item
-                onClick: PropTypes.func // call this callback when the menu item is clicked
+                title: PropTypes.string,
+                onClick: PropTypes.func
             })
         )
     ]),

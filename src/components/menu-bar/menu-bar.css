@@ -227,6 +227,17 @@
     margin: 0 0.25rem 0 0.5rem;
 }
 
+.projectManagerButton {
+    margin-left: 8px;
+    padding: 6px 12px;
+    background: #4C97FF;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
 @media only screen and (max-width: 1024px) {
     .tutorials-label, .collapsible-label, .debug-label{
         display: none;

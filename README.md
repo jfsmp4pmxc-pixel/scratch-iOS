@@ -3,5 +3,9 @@
 - Chỉ hỗ trợ IOS.
 
 ### Nhật ký thay đổi
-#### b1.0.4 (4) (beta):
+
+#### b1.1.1 (1):
+- thêm cơ chế lưu dự án
+
+#### b1.0.4 (4):
 - thử nghiệm bản build

@@ -1,1 +1,32 @@
-
+.overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.modal {
+    background: #fff;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 500px;
+    max-height: 80vh;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+}
+.header { display: flex; justify-content: space-between; align-items: center; }
+.header h2 { margin: 0; font-size: 18px; }
+.closeBtn { background: none; border: none; font-size: 18px; cursor: pointer; }
+.saveRow { display: flex; gap: 8px; margin: 12px 0; }
+.saveRow input { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+.saveRow button { padding: 8px 12px; background: #4C97FF; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+.list { overflow-y: auto; flex: 1; }
+.item { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; }
+.item:hover { background: #f5f5f5; }
+.itemName { flex: 1; }
+.delBtn { background: none; border: none; cursor: pointer; font-size: 16px; }
+.empty { text-align: center; color: #888; }

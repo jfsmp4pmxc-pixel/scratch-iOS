@@ -1,0 +1,55 @@
+name: ScratchNative
+options:
+  bundleIdPrefix: com.scratchios
+  deploymentTarget:
+    iOS: "15.0"
+packages:
+  ScratchCore:
+    path: .
+targets:
+  ScratchNative:
+    type: application
+    platform: iOS
+    sources:
+      - App
+    dependencies:
+      - package: ScratchCore
+    settings:
+      base:
+        SWIFT_VERSION: "5.5"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        PRODUCT_BUNDLE_IDENTIFIER: com.scratchios.native
+        MARKETING_VERSION: "2.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Scratch
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Scratch 3 Project
+            LSHandlerRank: Owner
+            LSItemContentTypes:
+              - com.scratchios.sb3
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: com.scratchios.sb3
+            UTTypeDescription: Scratch 3 Project
+            UTTypeConformsTo:
+              - public.zip-archive
+              - public.data
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - sb3
+              public.mime-type:
+                - application/x.scratch.sb3

@@ -26,3 +26,8 @@ npm-*
 
 # for act
 .secrets
+
+# native
+native/.build/
+native/*.xcodeproj
+native/App/Info.plist

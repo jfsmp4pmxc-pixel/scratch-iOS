@@ -1,0 +1,25 @@
+name: native-ios
+
+on:
+  push:
+    paths: ['native/**', '.github/workflows/native-ios.yml']
+  pull_request:
+    paths: ['native/**', '.github/workflows/native-ios.yml']
+
+jobs:
+  build:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit tests (ScratchCore)
+        run: swift test
+      - name: Build iOS app (simulator)
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          xcodebuild -project ScratchNative.xcodeproj -scheme ScratchNative \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build

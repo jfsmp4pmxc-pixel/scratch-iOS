@@ -5,9 +5,10 @@ on:
     paths: ['native/**', '.github/workflows/native-ios.yml']
   pull_request:
     paths: ['native/**', '.github/workflows/native-ios.yml']
+  workflow_dispatch:
 
 jobs:
-  build:
+  test:
     runs-on: macos-latest
     defaults:
       run:
@@ -16,10 +17,52 @@ jobs:
       - uses: actions/checkout@v4
       - name: Unit tests (ScratchCore)
         run: swift test
-      - name: Build iOS app (simulator)
+
+  ipa:
+    needs: test
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate Xcode project
         run: |
           brew install xcodegen
           xcodegen generate
+
+      - name: Build unsigned app (device)
+        run: |
           xcodebuild -project ScratchNative.xcodeproj -scheme ScratchNative \
-            -destination 'generic/platform=iOS Simulator' \
-            CODE_SIGNING_ALLOWED=NO build
+            -sdk iphoneos -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package IPA
+        run: |
+          rm -rf Payload ScratchNative-unsigned.ipa
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/ScratchNative.app Payload/
+          zip -qry ScratchNative-unsigned.ipa Payload
+          ls -lh ScratchNative-unsigned.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScratchNative-unsigned-ipa
+          path: native/ScratchNative-unsigned.ipa
+
+      - name: Publish rolling release (develop only)
+        if: github.ref == 'refs/heads/develop' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete native-latest --yes --cleanup-tag || true
+          gh release create native-latest ScratchNative-unsigned.ipa \
+            --prerelease --target "$GITHUB_SHA" \
+            --title "Native build (mới nhất)" \
+            --notes "IPA chưa ký, build từ commit $GITHUB_SHA. Cài bằng AltStore / Sideloadly / TrollStore."

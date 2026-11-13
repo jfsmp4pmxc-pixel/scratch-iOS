@@ -14,7 +14,8 @@ extension Runtime {
             }
             if t.blocked { t.sleeping = true; return }
             if !t.broadcastWait.isEmpty {
-                t.broadcastWait.removeAll(where: { $0.done || !threads.contains(where: { x in x === $0 }) })
+                let alive = threads
+                t.broadcastWait.removeAll(where: { w in w.done || !alive.contains(where: { x in x === w }) })
                 if !t.broadcastWait.isEmpty { t.sleeping = true; return }
             }
             guard !t.stack.isEmpty else { t.done = true; return }

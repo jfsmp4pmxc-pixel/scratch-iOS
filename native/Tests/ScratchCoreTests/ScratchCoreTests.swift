@@ -201,5 +201,41 @@ final class ScratchCoreTests: XCTestCase {
         XCTAssertEqual(s2.costumes.count, 2)
         XCTAssertEqual(s2.currentCostume, 1)
     }
+
+    func testDragMoveStack() throws {
+        let project = Project.blank()
+        let rt = Runtime(project: project)
+        let sprite = rt.targets.first(where: { !$0.isStage })!
+        let ctx = blankContext(rt, sprite)
+        let spec = { (op: String) in BlockCatalog.spec(for: op)! }
+
+        let hat = sprite.makeBlock(spec("event_whenflagclicked"), context: ctx)
+        sprite.addScript(hat.id)
+        let a = sprite.makeBlock(spec("motion_movesteps"), context: ctx)
+        let b = sprite.makeBlock(spec("motion_turnright"), context: ctx)
+        let c = sprite.makeBlock(spec("motion_turnleft"), context: ctx)
+        sprite.insertBlock(a.id, after: hat.id)
+        sprite.insertBlock(b.id, after: a.id)
+        sprite.insertBlock(c.id, after: b.id)        // hat -> a -> b -> c
+
+        let rep = sprite.makeBlock(spec("control_repeat"), context: ctx)
+        sprite.addScript(rep.id)
+
+        // kéo b (kéo theo c) vào trong vòng lặp
+        sprite.moveStack(b.id, intoSubstackOf: rep.id, input: "SUBSTACK")
+        XCTAssertNil(a.next)
+        if case .block(let first)? = rep.inputs["SUBSTACK"] { XCTAssertEqual(first, b.id) } else { XCTFail("thiếu SUBSTACK") }
+        XCTAssertEqual(b.next, c.id)
+
+        // không được kéo vào chính nội dung của mình
+        sprite.moveStack(b.id, afterBlock: c.id)
+        XCTAssertEqual(b.next, c.id)
+        XCTAssertNil(c.next)
+
+        // kéo c ra thành script mới
+        sprite.moveStackToNewScript(c.id)
+        XCTAssertTrue(c.topLevel)
+        XCTAssertNil(b.next)
+    }
 }
 

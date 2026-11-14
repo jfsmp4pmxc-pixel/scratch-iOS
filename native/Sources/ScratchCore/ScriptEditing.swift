@@ -154,6 +154,57 @@ public extension Target {
         b.topLevel = false
     }
 
+    /// Tách một khối cùng toàn bộ các khối phía sau nó (giống khi kéo trong Scratch).
+    func detachStack(_ id: String) {
+        guard let b = blocks[id] else { return }
+        if let pid = b.parent, let p = blocks[pid] {
+            if p.next == id {
+                p.next = nil
+            } else {
+                for (k, v) in p.inputs {
+                    if case .block(let cid) = v, cid == id { p.inputs.removeValue(forKey: k) }
+                }
+            }
+        }
+        b.parent = nil
+        b.topLevel = false
+    }
+
+    /// Các id thuộc về một chuỗi khối (kể cả khối con và khối giá trị).
+    func collectStackIds(from id: String) -> Set<String> {
+        var out = Set<String>()
+        func walk(_ cur: String) {
+            guard let b = blocks[cur], !out.contains(cur) else { return }
+            out.insert(cur)
+            for v in b.inputs.values {
+                if case .block(let c) = v { walk(c) }
+            }
+            if let n = b.next { walk(n) }
+        }
+        walk(id)
+        return out
+    }
+
+    func moveStack(_ id: String, afterBlock anchor: String) {
+        guard id != anchor, !collectStackIds(from: id).contains(anchor) else { return }
+        detachStack(id)
+        insertBlock(id, after: anchor)
+        finishEdit()
+    }
+
+    func moveStack(_ id: String, intoSubstackOf host: String, input: String) {
+        guard id != host, !collectStackIds(from: id).contains(host) else { return }
+        detachStack(id)
+        insertBlock(id, intoSubstackOf: host, input: input)
+        finishEdit()
+    }
+
+    func moveStackToNewScript(_ id: String) {
+        detachStack(id)
+        addScript(id)
+        finishEdit()
+    }
+
     func deleteSubtree(_ id: String, includingNext: Bool) {
         guard let b = blocks[id] else { return }
         for (_, v) in b.inputs {

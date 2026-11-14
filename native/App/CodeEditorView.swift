@@ -51,6 +51,9 @@ struct CodeEditorView: View {
                 }
                 .padding(.trailing, 14).padding(.bottom, store.selectedBlock == nil ? 14 : 70)
             }
+            .coordinateSpace(name: "editor")
+            .overlay(DragGhost(target: t))
+            .onPreferenceChange(DropZoneKey.self) { store.dropZones = $0 }
             .sheet(isPresented: $store.showPalette) { PaletteView().environmentObject(store) }
             .sheet(item: $store.inputEdit) { req in InputEditSheet(request: req).environmentObject(store) }
             .sheet(isPresented: $store.showCustomBlock) { CustomBlockSheet().environmentObject(store) }
@@ -135,24 +138,93 @@ struct StackView: View {
     }
 }
 
+// MARK: - Kéo thả
+
+struct DropZone: Equatable {
+    enum Kind { case after, into }
+    let kind: Kind
+    let blockId: String
+    let input: String
+    let frame: CGRect
+    var key: String { kind == .after ? "after:\(blockId)" : "in:\(blockId):\(input)" }
+}
+
+struct DropZoneKey: PreferenceKey {
+    static var defaultValue: [DropZone] = []
+    static func reduce(value: inout [DropZone], nextValue: () -> [DropZone]) {
+        value.append(contentsOf: nextValue())
+    }
+}
+
+extension View {
+    /// Đăng ký vùng này làm điểm thả khối (toạ độ trong không gian "editor").
+    func dropZone(_ kind: DropZone.Kind, _ blockId: String, _ input: String = "") -> some View {
+        background(
+            GeometryReader { g in
+                Color.clear.preference(
+                    key: DropZoneKey.self,
+                    value: [DropZone(kind: kind, blockId: blockId, input: input, frame: g.frame(in: .named("editor")))])
+            }
+        )
+    }
+}
+
+/// Trạng thái đang kéo (chỉ khối "ma" quan sát để không vẽ lại cả vùng làm việc).
+final class DragModel: ObservableObject {
+    @Published var blockId: String?
+    @Published var location: CGPoint = .zero
+    var draggedIds: Set<String> = []
+}
+
+/// Vùng thả đang được tô sáng.
+final class DropHighlight: ObservableObject {
+    @Published var key: String?
+}
+
+struct DragGhost: View {
+    let target: Target
+    @EnvironmentObject var dragModel: DragModel
+
+    var body: some View {
+        if let id = dragModel.blockId, let b = target.blocks[id] {
+            Group {
+                if let spec = BlockCatalog.spec(for: b, in: target) {
+                    SpecPreview(spec: spec)
+                } else {
+                    Text(b.opcode).padding(8).background(Color.gray).cornerRadius(8)
+                }
+            }
+            .frame(maxWidth: 260)
+            .opacity(0.88)
+            .shadow(radius: 6)
+            .position(x: dragModel.location.x + 70, y: dragModel.location.y - 24)
+            .allowsHitTesting(false)
+        }
+    }
+}
+
 struct BlockRowView: View {
     let target: Target
     let id: String
     @EnvironmentObject var store: ProjectStore
+    @EnvironmentObject var highlight: DropHighlight
 
     var body: some View {
         if let b = target.blocks[id] {
             let spec = BlockCatalog.spec(for: b, in: target)
             let color = colorFor(spec)
             let selected = store.selectedBlock == id
+            let isC = !(spec?.substackNames.isEmpty ?? true)
             VStack(alignment: .leading, spacing: 0) {
-                header(b, spec, color)
+                header(b, spec, color, isC: isC)
                 if let spec = spec {
                     ForEach(spec.substackNames, id: \.self) { name in
                         if name == "SUBSTACK2" {
                             HStack { Text("ngược lại").font(.subheadline.bold()).foregroundColor(.white); Spacer() }
                                 .padding(.horizontal, 10).padding(.vertical, 5)
                                 .background(color)
+                                .dropZone(.into, id, "SUBSTACK2")
+                                .overlay(alignment: .bottom) { bar(highlight.key == "in:\(id):SUBSTACK2") }
                         }
                         HStack(alignment: .top, spacing: 0) {
                             Rectangle().fill(color).frame(width: 14)
@@ -161,14 +233,21 @@ struct BlockRowView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
-                    if !spec.substackNames.isEmpty {
+                    if isC {
                         Rectangle().fill(color).frame(height: 8)
+                            .dropZone(.after, id)
                     }
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(selected ? Color.primary : Color.clear, lineWidth: 2))
+            .overlay(alignment: .bottom) { bar(highlight.key == "after:\(id)") }
         }
+    }
+
+    @ViewBuilder
+    private func bar(_ on: Bool) -> some View {
+        if on { Rectangle().fill(Color.primary).frame(height: 4) }
     }
 
     @ViewBuilder
@@ -180,29 +259,54 @@ struct BlockRowView: View {
                 store.selectedBlock = b.id
                 store.insertInside = name
             } label: {
-                Text("(trống) — chạm rồi nhấn +")
+                Text("(trống) — thả khối vào đây")
                     .font(.caption).foregroundColor(.secondary)
                     .padding(.horizontal, 8).padding(.vertical, 6)
                     .background(Color.gray.opacity(0.2)).cornerRadius(6)
             }
             .buttonStyle(.plain)
+            .dropZone(.into, b.id, name)
         }
     }
 
-    private func header(_ b: Block, _ spec: BlockSpec?, _ color: Color) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                if let spec = spec {
-                    SegmentsView(target: target, block: b, spec: spec)
-                } else {
-                    Text(b.opcode).font(.subheadline.bold()).foregroundColor(.white)
+    private func handle(_ b: Block) -> some View {
+        Image(systemName: "line.3.horizontal")
+            .font(.subheadline)
+            .foregroundColor(.white.opacity(0.85))
+            .frame(width: 30, height: 38)
+            .contentShape(Rectangle())
+            .gesture(
+                LongPressGesture(minimumDuration: 0.2)
+                    .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("editor")))
+                    .onChanged { value in
+                        if case .second(true, let drag?) = value { store.dragMoved(b.id, to: drag.location) }
+                    }
+                    .onEnded { value in
+                        if case .second(true, let drag?) = value { store.dragEnded(at: drag.location) }
+                        else { store.cancelDrag() }
+                    }
+            )
+    }
+
+    private func header(_ b: Block, _ spec: BlockSpec?, _ color: Color, isC: Bool) -> some View {
+        HStack(spacing: 0) {
+            handle(b)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    if let spec = spec {
+                        SegmentsView(target: target, block: b, spec: spec)
+                    } else {
+                        Text(b.opcode).font(.subheadline.bold()).foregroundColor(.white)
+                    }
                 }
+                .padding(.trailing, 10).padding(.vertical, 8)
             }
-            .padding(.horizontal, 10).padding(.vertical, 8)
+            .contentShape(Rectangle())
+            .onTapGesture { store.selectBlock(b.id) }
         }
         .background(color)
-        .contentShape(Rectangle())
-        .onTapGesture { store.selectBlock(b.id) }
+        .dropZone(isC ? .into : .after, b.id, isC ? "SUBSTACK" : "")
+        .overlay(alignment: .bottom) { bar(isC && highlight.key == "in:\(b.id):SUBSTACK") }
     }
 }
 

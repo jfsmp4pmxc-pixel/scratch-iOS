@@ -8,6 +8,8 @@ struct ScratchApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(store)
+                .environmentObject(store.dragModel)
+                .environmentObject(store.highlight)
                 .onOpenURL { url in store.open(url: url) }
         }
     }

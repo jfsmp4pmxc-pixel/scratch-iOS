@@ -66,6 +66,11 @@ final class ProjectStore: ObservableObject {
     @Published var editorTab = 0                  // 0 = Code, 1 = Trang phục, 2 = Âm thanh
     private var previewPlayer: AVAudioPlayer?
 
+    // Kéo thả
+    let dragModel = DragModel()
+    let highlight = DropHighlight()
+    var dropZones: [DropZone] = []
+
     private var audio: AudioPlayer?
 
     // MARK: Thư mục lưu dự án
@@ -316,6 +321,71 @@ final class ProjectStore: ObservableObject {
         selectedBlock = block.id
         insertInside = nil
         revision += 1
+    }
+
+    // MARK: Kéo thả khối
+
+    func dragMoved(_ id: String, to p: CGPoint) {
+        guard let t = selectedTarget else { return }
+        if dragModel.blockId != id {
+            dragModel.draggedIds = t.collectStackIds(from: id)
+            dragModel.blockId = id
+            selectedBlock = id
+            insertInside = nil
+        }
+        dragModel.location = p
+        let key = resolveZone(at: p)?.key
+        if highlight.key != key { highlight.key = key }
+    }
+
+    func cancelDrag() {
+        dragModel.blockId = nil
+        dragModel.draggedIds = []
+        highlight.key = nil
+    }
+
+    func dragEnded(at p: CGPoint) {
+        defer { cancelDrag() }
+        guard let t = selectedTarget, let id = dragModel.blockId, let b = t.blocks[id] else { return }
+        if let z = resolveZone(at: p) {
+            if z.kind == .after { t.moveStack(id, afterBlock: z.blockId) }
+            else { t.moveStack(id, intoSubstackOf: z.blockId, input: z.input) }
+        } else if !b.topLevel {
+            t.moveStackToNewScript(id)
+        }
+        revision += 1
+    }
+
+    /// Tìm vùng thả hợp lệ tại điểm p (nhỏ nhất nếu nhiều vùng chồng nhau).
+    func resolveZone(at p: CGPoint) -> DropZone? {
+        guard let t = selectedTarget, let dragId = dragModel.blockId, let first = t.blocks[dragId] else { return nil }
+        if BlockCatalog.spec(for: first, in: t)?.shape == .hat { return nil }
+        let last = t.lastBlock(in: first)
+        let lastHasNext = BlockCatalog.spec(for: last, in: t)?.hasNext ?? true
+
+        var best: DropZone?
+        var bestArea = CGFloat.greatestFiniteMagnitude
+        for z in dropZones {
+            if dragModel.draggedIds.contains(z.blockId) { continue }
+            guard let host = t.blocks[z.blockId] else { continue }
+            let hostSpec = BlockCatalog.spec(for: host, in: t)
+            switch z.kind {
+            case .after:
+                if !(hostSpec?.hasNext ?? true) { continue }
+                if !lastHasNext && host.next != nil { continue }
+            case .into:
+                guard hostSpec?.substackNames.contains(z.input) == true else { continue }
+                var hasChild = false
+                if case .block? = host.inputs[z.input] { hasChild = true }
+                if !lastHasNext && hasChild { continue }
+            }
+            let f = z.frame.insetBy(dx: -6, dy: -8)
+            if f.contains(p) {
+                let area = f.width * f.height
+                if area < bestArea { best = z; bestArea = area }
+            }
+        }
+        return best
     }
 
     func deleteSelectedBlock() {

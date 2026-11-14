@@ -23,12 +23,12 @@ open ScratchNative.xcodeproj   # chạy trên simulator/thiết bị
 ```
 
 ### Đã có
-- Trình chỉnh sửa khối: bảng khối theo nhóm, chèn/di chuyển/xoá, sửa ô nhập, chèn khối giá trị, khối tự định nghĩa, biến và danh sách
+- Trình chỉnh sửa khối: bảng khối theo nhóm, **kéo-thả khối** (nhấn giữ tay nắm ≡ ở đầu khối), chèn/di chuyển/xoá, sửa ô nhập, chèn khối giá trị, khối tự định nghĩa, biến và danh sách
 - Sprite: thêm mới, nhập ảnh, đổi tên, xoá; trang phục/phông nền: nhập ảnh, vẽ, đổi tên, xoá; âm thanh: nhập WAV/MP3, ghi âm
 - Lưu lại toàn bộ thay đổi vào `.sb3`
 
 ### Chưa có
-- Kéo-thả khối (hiện chọn khối rồi dùng nút), sửa lại trang phục đã có trong editor vẽ, thư viện sprite/backdrop/âm thanh có sẵn, extension
+- Kéo khối từ bảng khối ra workspace (hiện chạm để chèn), tự cuộn khi kéo sát mép, kéo-thả khối giá trị, sửa lại trang phục đã có trong editor vẽ, thư viện sprite/backdrop/âm thanh có sẵn, extension
 - `touching color`, hiệu ứng đồ hoạ ngoài `ghost`, hiệu ứng âm thanh, monitor dạng list/slider
 - Âm thanh WAV nén ADPCM có thể không phát được bằng AVAudioPlayer
 

@@ -191,15 +191,18 @@ public extension Project {
         try self.init(projectJSON: json, assets: assets)
     }
 
-    /// Ghi lại thành .sb3, cập nhật trạng thái hiện tại (vị trí, biến, trang phục...).
+    /// Ghi lại thành .sb3, cập nhật trạng thái hiện tại (vị trí, biến, khối, sprite...).
     func exportSB3(runtimeTargets: [Target]? = nil, monitors currentMonitors: [Monitor]? = nil) throws -> Data {
         var root = rawJSON
-        var targetsJSON = (root["targets"] as? [[String: Any]]) ?? []
+        let oldTargets = (root["targets"] as? [[String: Any]]) ?? []
         let source = (runtimeTargets ?? targets).filter { !$0.isClone }
+        var out: [[String: Any]] = []
+        var anyBlocksChanged = false
 
         for (order, t) in source.enumerated() {
-            guard let idx = t.rawIndex, idx < targetsJSON.count else { continue }
-            var tj = targetsJSON[idx]
+            var tj: [String: Any]
+            if let idx = t.rawIndex, idx < oldTargets.count { tj = oldTargets[idx] } else { tj = t.baseJSON() }
+            tj["name"] = t.name
             tj["layerOrder"] = order
             tj["currentCostume"] = t.currentCostume
             tj["volume"] = t.volume
@@ -221,23 +224,63 @@ public extension Project {
             var lists: [String: Any] = [:]
             for (id, l) in t.lists { lists[id] = [l.name, l.items.map { $0.jsonObject }] as [Any] }
             tj["lists"] = lists
-            targetsJSON[idx] = tj
+
+            if t.blocksDirty || t.rawIndex == nil {
+                var bj: [String: Any] = [:]
+                for (id, b) in t.blocks { bj[id] = b.jsonObject(blocks: t.blocks) }
+                tj["blocks"] = bj
+                anyBlocksChanged = true
+            }
+            out.append(tj)
         }
-        root["targets"] = targetsJSON
+
+        if anyBlocksChanged, let si = out.firstIndex(where: { ($0["isStage"] as? Bool) == true }) {
+            var bc = (out[si]["broadcasts"] as? [String: Any]) ?? [:]
+            let known = Set(bc.values.compactMap { $0 as? String })
+            for name in Project.usedBroadcastNames(in: source) where !known.contains(name) { bc[name] = name }
+            out[si]["broadcasts"] = bc
+        }
+        root["targets"] = out
 
         if let mons = currentMonitors, !rawMonitors.isEmpty {
-            var out = rawMonitors
-            for i in 0..<out.count {
-                if let id = out[i]["id"] as? String, let m = mons.first(where: { $0.id == id }) {
-                    out[i]["visible"] = m.visible
+            var outMon = rawMonitors
+            for i in 0..<outMon.count {
+                if let id = outMon[i]["id"] as? String, let m = mons.first(where: { $0.id == id }) {
+                    outMon[i]["visible"] = m.visible
                 }
             }
-            root["monitors"] = out
+            root["monitors"] = outMon
         }
 
         let json = try JSONSerialization.data(withJSONObject: root, options: [])
         var files: [(name: String, data: Data)] = [("project.json", json)]
         for (name, data) in assets.sorted(by: { $0.key < $1.key }) { files.append((name, data)) }
         return ZipArchive.write(files)
+    }
+
+    /// Tên các tin nhắn phát sóng đang được dùng trong các khối.
+    static func usedBroadcastNames(in targets: [Target]) -> [String] {
+        var s = Set<String>()
+        for t in targets {
+            for b in t.blocks.values {
+                if let n = b.fields["BROADCAST_OPTION"]?.asString, !n.isEmpty { s.insert(n) }
+                for v in b.inputs.values {
+                    if case .broadcast(let n) = v, !n.isEmpty { s.insert(n) }
+                }
+            }
+        }
+        return s.sorted()
+    }
+
+    /// Tên tin nhắn đã khai báo trong project.json gốc.
+    var declaredBroadcasts: [String] {
+        let ts = (rawJSON["targets"] as? [[String: Any]]) ?? []
+        var s = Set<String>()
+        for t in ts {
+            if let bc = t["broadcasts"] as? [String: Any] {
+                for v in bc.values { if let n = v as? String { s.insert(n) } }
+            }
+        }
+        return s.sorted()
     }
 }

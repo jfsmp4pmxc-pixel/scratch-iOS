@@ -705,4 +705,10 @@ struct NumberScanner {
         return Double(String(chars[start..<j]))
     }
 }
+
+/// Kích thước gốc của một tệp SVG (đơn vị Scratch).
+public func svgIntrinsicSize(_ data: Data) -> (width: Double, height: Double)? {
+    guard let doc = SVGDocument(data: data) else { return nil }
+    return (doc.width, doc.height)
+}
 #endif

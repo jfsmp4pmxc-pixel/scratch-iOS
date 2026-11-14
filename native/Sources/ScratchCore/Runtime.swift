@@ -382,6 +382,34 @@ public final class Runtime {
         requestRedraw()
     }
 
+    // MARK: Chỉnh sửa dự án
+
+    public func addSprite(_ t: Target) {
+        t.buildCaches()
+        targets.append(t)
+        requestRedraw()
+    }
+
+    public func removeSprite(_ t: Target) {
+        guard !t.isStage else { return }
+        targets.removeAll(where: { $0 === t || $0.cloneParent === t })
+        threads.removeAll(where: { $0.target === t || $0.target.cloneParent === t })
+        requestRedraw()
+        notifyRunning()
+    }
+
+    /// Chạy riêng một script (để thử từ trình chỉnh sửa).
+    public func runScript(of target: Target, rootId: String) {
+        guard let b = target.blocks[rootId] else { return }
+        let isHat = BlockCatalog.spec(for: b.opcode)?.shape == .hat || b.opcode == "procedures_definition"
+        if isHat {
+            startThread(target: target, topBlock: rootId)
+        } else {
+            threads.append(ScriptThread(target: target, topBlock: rootId, first: rootId))
+        }
+        notifyRunning()
+    }
+
     func noteUnsupported(_ opcode: String) {
         unsupportedOpcodes.insert(opcode)
     }

@@ -20,6 +20,11 @@ public final class Block {
     public var fields: [String: ScratchValue] = [:]
     public var fieldIds: [String: String] = [:]
     public var topLevel: Bool = false
+    public var shadow: Bool = false
+    public var x: Double = 0
+    public var y: Double = 0
+    /// Mã kiểu của literal (4 số, 9 màu, 10 chuỗi...) để ghi lại đúng khi lưu.
+    public var inputTypes: [String: Int] = [:]
     public var mutation: [String: String] = [:]
 
     public init(id: String, opcode: String) {
@@ -33,9 +38,15 @@ public final class Block {
         b.next = json["next"] as? String
         b.parent = json["parent"] as? String
         b.topLevel = (json["topLevel"] as? Bool) ?? false
+        b.shadow = (json["shadow"] as? Bool) ?? false
+        b.x = (json["x"] as? NSNumber)?.doubleValue ?? 0
+        b.y = (json["y"] as? NSNumber)?.doubleValue ?? 0
 
         if let inputs = json["inputs"] as? [String: Any] {
-            for (k, v) in inputs { b.inputs[k] = parseInput(v) }
+            for (k, v) in inputs {
+                b.inputs[k] = parseInput(v)
+                if let ty = primType(v) { b.inputTypes[k] = ty }
+            }
         }
         if let fields = json["fields"] as? [String: Any] {
             for (k, v) in fields {
@@ -77,6 +88,72 @@ public final class Block {
         }
         return .empty
     }
+
+    private static func primType(_ any: Any) -> Int? {
+        guard let arr = any as? [Any], arr.count >= 2, let prim = arr[1] as? [Any], prim.count >= 2 else { return nil }
+        return (prim[0] as? NSNumber)?.intValue
+    }
+
+    /// Chuyển lại thành JSON của project.json.
+    func jsonObject(blocks: [String: Block]) -> [String: Any] {
+        var d: [String: Any] = [
+            "opcode": opcode,
+            "next": next ?? NSNull(),
+            "parent": parent ?? NSNull(),
+            "shadow": shadow,
+            "topLevel": topLevel
+        ]
+        if topLevel { d["x"] = x; d["y"] = y }
+
+        var ins: [String: Any] = [:]
+        for (k, v) in inputs {
+            switch v {
+            case .empty:
+                break
+            case .literal(let val):
+                let prim: [Any] = [inputTypes[k] ?? 10, val.asString]
+                ins[k] = [1, prim] as [Any]
+            case .broadcast(let n):
+                let prim: [Any] = [11, n, n]
+                ins[k] = [1, prim] as [Any]
+            case .variable(let id, let name):
+                let prim: [Any] = [12, name, id]
+                let sh: [Any] = [10, ""]
+                ins[k] = [3, prim, sh] as [Any]
+            case .list(let id, let name):
+                let prim: [Any] = [13, name, id]
+                let sh: [Any] = [10, ""]
+                ins[k] = [3, prim, sh] as [Any]
+            case .block(let cid):
+                let child = blocks[cid]
+                if child?.shadow == true {
+                    ins[k] = [1, cid] as [Any]
+                } else if k.hasPrefix("SUBSTACK") {
+                    ins[k] = [2, cid] as [Any]
+                } else if let c = child, BlockCatalog.spec(for: c.opcode)?.shape == .boolean {
+                    ins[k] = [2, cid] as [Any]
+                } else {
+                    let sh: [Any] = [10, ""]
+                    ins[k] = [3, cid, sh] as [Any]
+                }
+            }
+        }
+        d["inputs"] = ins
+
+        var fs: [String: Any] = [:]
+        for (k, v) in fields {
+            let idValue: Any = fieldIds[k] ?? NSNull()
+            fs[k] = [v.jsonObject, idValue] as [Any]
+        }
+        d["fields"] = fs
+
+        if !mutation.isEmpty {
+            var m: [String: Any] = ["tagName": "mutation", "children": [Any]()]
+            for (k, v) in mutation { m[k] = v }
+            d["mutation"] = m
+        }
+        return d
+    }
 }
 
 // MARK: - Assets
@@ -102,6 +179,12 @@ public final class Costume {
     }
 
     public var isSVG: Bool { dataFormat.lowercased() == "svg" }
+
+    func jsonObject() -> [String: Any] {
+        return ["name": name, "assetId": assetId, "md5ext": md5ext, "dataFormat": dataFormat,
+                "bitmapResolution": bitmapResolution,
+                "rotationCenterX": rotationCenterX, "rotationCenterY": rotationCenterY]
+    }
 }
 
 public final class Sound {
@@ -115,6 +198,10 @@ public final class Sound {
         assetId = (json["assetId"] as? String) ?? ""
         dataFormat = (json["dataFormat"] as? String) ?? "wav"
         md5ext = (json["md5ext"] as? String) ?? "\(assetId).\(dataFormat)"
+    }
+
+    func jsonObject() -> [String: Any] {
+        return ["name": name, "assetId": assetId, "md5ext": md5ext, "dataFormat": dataFormat]
     }
 }
 
@@ -192,6 +279,8 @@ public final class Target {
     public var pen = PenState()
 
     public var isClone = false
+    /// Đặt true khi khối bị sửa: lúc lưu sẽ ghi lại toàn bộ khối của target.
+    public var blocksDirty = false
     public weak var cloneParent: Target?
     /// Chỉ số của target trong mảng "targets" của project.json gốc (để lưu lại).
     var rawIndex: Int?
@@ -208,6 +297,18 @@ public final class Target {
         guard !costumes.isEmpty else { return nil }
         let i = min(max(currentCostume, 0), costumes.count - 1)
         return costumes[i]
+    }
+
+    func baseJSON() -> [String: Any] {
+        return [
+            "isStage": isStage, "name": name,
+            "variables": [String: Any](), "lists": [String: Any](), "broadcasts": [String: Any](),
+            "blocks": [String: Any](), "comments": [String: Any](),
+            "currentCostume": currentCostume,
+            "costumes": costumes.map { $0.jsonObject() },
+            "sounds": sounds.map { $0.jsonObject() },
+            "volume": volume, "layerOrder": 1
+        ]
     }
 
     func buildCaches() {

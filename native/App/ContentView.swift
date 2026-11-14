@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var showExporter = false
     @State private var exportDoc = SB3Document(data: Data())
     @State private var showKeys = false
+    @State private var showSpriteImporter = false
     @State private var answerText = ""
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -25,6 +26,7 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .navigationBarLeading) {
+                    Button { store.newProject() } label: { Image(systemName: "doc.badge.plus") }
                     Button { showImporter = true } label: { Image(systemName: "folder") }
                     Button { showLibrary = true } label: { Image(systemName: "tray.full") }
                 }
@@ -48,6 +50,10 @@ struct ContentView: View {
         }
         .fileExporter(isPresented: $showExporter, document: exportDoc, contentType: .sb3,
                       defaultFilename: store.projectName.isEmpty ? "Project" : store.projectName) { _ in }
+        .fileImporter(isPresented: $showSpriteImporter, allowedContentTypes: [.png, .jpeg, .svg]) { result in
+            if case .success(let url) = result { store.importSprite(url: url) }
+            else if case .failure(let e) = result { store.errorMessage = e.localizedDescription }
+        }
         .sheet(isPresented: $showLibrary) { LibraryView(isPresented: $showLibrary) }
         .alert("Lỗi", isPresented: Binding(get: { store.errorMessage != nil },
                                            set: { if !$0 { store.errorMessage = nil } }),
@@ -73,11 +79,13 @@ struct ContentView: View {
         VStack(spacing: 16) {
             Image(systemName: "cat.fill").font(.system(size: 64)).foregroundColor(.orange)
             Text("Chưa có dự án nào").font(.title3.bold())
-            Text("Mở một tệp .sb3 để chạy ngay trên máy.")
+            Text("Tạo dự án mới hoặc mở một tệp .sb3.")
                 .foregroundColor(.secondary).multilineTextAlignment(.center)
             HStack {
-                Button { showImporter = true } label: { Label("Mở dự án", systemImage: "folder") }
+                Button { store.newProject() } label: { Label("Dự án mới", systemImage: "plus") }
                     .buttonStyle(.borderedProminent)
+                Button { showImporter = true } label: { Label("Mở dự án", systemImage: "folder") }
+                    .buttonStyle(.bordered)
                 Button { showLibrary = true } label: { Label("Đã lưu", systemImage: "tray.full") }
                     .buttonStyle(.bordered)
             }
@@ -92,24 +100,64 @@ struct ContentView: View {
             let landscape = geo.size.width > geo.size.height
             if landscape {
                 HStack(alignment: .top, spacing: 12) {
-                    let w = min(geo.size.width * 0.62, (geo.size.height - 70) * 4 / 3)
+                    let w = min(geo.size.width * 0.45, (geo.size.height - 70) * 4 / 3)
                     VStack(spacing: 8) {
                         stageArea(rt, r).frame(width: w, height: w * 3 / 4)
                         controls(rt)
+                        Spacer(minLength: 0)
                     }
-                    spriteList(rt, r, vertical: true)
+                    .frame(width: w)
+                    VStack(spacing: 8) {
+                        spriteBar(r)
+                        CodeEditorView()
+                    }
                 }
                 .padding(12)
             } else {
-                VStack(spacing: 10) {
-                    stageArea(rt, r).aspectRatio(4 / 3, contentMode: .fit)
+                VStack(spacing: 8) {
+                    stageArea(rt, r)
+                        .aspectRatio(4 / 3, contentMode: .fit)
+                        .frame(maxHeight: geo.size.height * 0.34)
                     controls(rt)
-                    spriteList(rt, r, vertical: false)
-                    Spacer(minLength: 0)
+                    spriteBar(r)
+                    CodeEditorView()
                 }
                 .padding(12)
             }
         }
+    }
+
+    private func spriteBar(_ r: StageRenderer) -> some View {
+        let items = store.sprites
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(items.indices, id: \.self) { i in
+                    let t = items[i]
+                    SpriteChip(target: t, renderer: r, selected: store.selectedTarget === t)
+                        .onTapGesture { store.select(target: t) }
+                        .contextMenu {
+                            if !t.isStage {
+                                Button {
+                                    store.namePrompt = NamePrompt(kind: .rename, initial: t.name) { name, _ in
+                                        store.renameSprite(t, to: name)
+                                    }
+                                } label: { Label("Đổi tên", systemImage: "pencil") }
+                                Button(role: .destructive) { store.deleteSprite(t) } label: { Label("Xoá sprite", systemImage: "trash") }
+                            }
+                        }
+                }
+                Menu {
+                    Button { store.addBlankSprite() } label: { Label("Sprite mới", systemImage: "circle") }
+                    Button { showSpriteImporter = true } label: { Label("Nhập ảnh…", systemImage: "photo") }
+                } label: {
+                    Image(systemName: "plus").font(.title3)
+                        .frame(width: 56, height: 72)
+                        .background(Color.gray.opacity(0.12)).cornerRadius(10)
+                }
+            }
+        }
+        .frame(height: 84)
+        .id(store.revision)
     }
 
     private func stageArea(_ rt: Runtime, _ r: StageRenderer) -> some View {
@@ -182,20 +230,6 @@ struct ContentView: View {
             KeyButton(label: "Space", key: "space", runtime: rt, width: 96)
         }
     }
-
-    private func spriteList(_ rt: Runtime, _ r: StageRenderer, vertical: Bool) -> some View {
-        let items = rt.targets.filter { !$0.isClone }
-        let content = ForEach(items.indices, id: \.self) { i in
-            SpriteChip(target: items[i], renderer: r)
-        }
-        return Group {
-            if vertical {
-                ScrollView { VStack(spacing: 8) { content } }.frame(maxWidth: 140)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 8) { content } }
-            }
-        }
-    }
 }
 
 // MARK: - Thành phần nhỏ
@@ -203,6 +237,7 @@ struct ContentView: View {
 struct SpriteChip: View {
     let target: Target
     let renderer: StageRenderer
+    var selected: Bool = false
 
     var body: some View {
         VStack(spacing: 4) {
@@ -220,6 +255,7 @@ struct SpriteChip: View {
         .frame(width: 80)
         .background(Color.gray.opacity(0.12))
         .cornerRadius(10)
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(selected ? Color.accentColor : Color.clear, lineWidth: 2))
     }
 }
 

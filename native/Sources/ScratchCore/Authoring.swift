@@ -13,6 +13,16 @@ func md5Hex(_ data: Data) -> String {
     #endif
 }
 
+func uniqueName(_ name: String, among existing: [String]) -> String {
+    if !existing.contains(name) { return name }
+    var base = name
+    while let last = base.last, last.isNumber { base.removeLast() }
+    if base.isEmpty { base = name }
+    var n = 2
+    while existing.contains("\(base)\(n)") { n += 1 }
+    return "\(base)\(n)"
+}
+
 private let blankStageSVG = Data(#"<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360" viewBox="0 0 480 360"><rect width="480" height="360" fill="#ffffff"/></svg>"#.utf8)
 
 private let defaultSpriteSVG = Data(#"<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80"><circle cx="40" cy="40" r="38" fill="#4C97FF" stroke="#3373CC" stroke-width="4"/><circle cx="28" cy="32" r="6" fill="#ffffff"/><circle cx="52" cy="32" r="6" fill="#ffffff"/><path d="M24 52 Q40 66 56 52" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/></svg>"#.utf8)
@@ -71,5 +81,25 @@ public extension Project {
     func makeBlankSprite(existingNames: [String]) -> Target {
         return makeSprite(name: "Sprite", existingNames: existingNames, assetData: defaultSpriteSVG, dataFormat: "svg",
                           centerX: 40, centerY: 40, bitmapResolution: 1)
+    }
+
+    func makeCostume(name: String, existing: [String], data: Data, format: String,
+                     centerX: Double, centerY: Double, bitmapResolution: Double) -> Costume {
+        let id = md5Hex(data)
+        let md5ext = id + "." + format
+        assets[md5ext] = data
+        let json: [String: Any] = ["name": uniqueName(name, among: existing), "assetId": id, "md5ext": md5ext,
+                                   "dataFormat": format, "bitmapResolution": bitmapResolution,
+                                   "rotationCenterX": centerX, "rotationCenterY": centerY]
+        return Costume(json: json)
+    }
+
+    func makeSound(name: String, existing: [String], data: Data, format: String, rate: Double, sampleCount: Int) -> Sound {
+        let id = md5Hex(data)
+        let md5ext = id + "." + format
+        assets[md5ext] = data
+        let json: [String: Any] = ["name": uniqueName(name, among: existing), "assetId": id, "md5ext": md5ext,
+                                   "dataFormat": format, "format": "", "rate": rate, "sampleCount": sampleCount]
+        return Sound(json: json)
     }
 }

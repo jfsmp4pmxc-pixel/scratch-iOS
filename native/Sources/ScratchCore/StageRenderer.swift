@@ -89,6 +89,11 @@ public final class StageRenderer: SpatialProvider, PenSurface {
     /// Xoá cache (khi mở project khác).
     public func resetCache() { cache.removeAll(); missing.removeAll() }
 
+    /// Ảnh của một trang phục bất kỳ (dùng cho danh sách trang phục).
+    public func thumbnail(for costume: Costume) -> CGImage? {
+        return image(for: costume)?.cgImage
+    }
+
     /// Ảnh trang phục hiện tại của target (dùng cho hình thu nhỏ trong danh sách sprite).
     public func costumeImage(for target: Target) -> CGImage? {
         return image(for: target.costume)?.cgImage

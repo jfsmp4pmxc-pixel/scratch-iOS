@@ -55,6 +55,7 @@ struct ContentView: View {
             else if case .failure(let e) = result { store.errorMessage = e.localizedDescription }
         }
         .sheet(isPresented: $showLibrary) { LibraryView(isPresented: $showLibrary) }
+        .sheet(item: $store.namePrompt) { p in NamePromptSheet(prompt: p).environmentObject(store) }
         .alert("Lỗi", isPresented: Binding(get: { store.errorMessage != nil },
                                            set: { if !$0 { store.errorMessage = nil } }),
                actions: { Button("OK", role: .cancel) {} },
@@ -109,7 +110,7 @@ struct ContentView: View {
                     .frame(width: w)
                     VStack(spacing: 8) {
                         spriteBar(r)
-                        CodeEditorView()
+                        editorPanel
                     }
                 }
                 .padding(12)
@@ -120,9 +121,25 @@ struct ContentView: View {
                         .frame(maxHeight: geo.size.height * 0.34)
                     controls(rt)
                     spriteBar(r)
-                    CodeEditorView()
+                    editorPanel
                 }
                 .padding(12)
+            }
+        }
+    }
+
+    private var editorPanel: some View {
+        VStack(spacing: 6) {
+            Picker("", selection: $store.editorTab) {
+                Text("Code").tag(0)
+                Text(store.selectedTarget?.isStage == true ? "Phông nền" : "Trang phục").tag(1)
+                Text("Âm thanh").tag(2)
+            }
+            .pickerStyle(.segmented)
+            switch store.editorTab {
+            case 1: CostumesView()
+            case 2: SoundsView()
+            default: CodeEditorView()
             }
         }
     }

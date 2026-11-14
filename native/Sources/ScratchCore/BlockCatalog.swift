@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Kiểu
 
 public enum BlockCategory: String, CaseIterable {
-    case motion, looks, sound, events, control, sensing, operators, pen, data
+    case motion, looks, sound, events, control, sensing, operators, pen, data, custom
 
     public var title: String {
         switch self {
@@ -16,6 +16,7 @@ public enum BlockCategory: String, CaseIterable {
         case .operators: return "Toán tử"
         case .pen: return "Bút vẽ"
         case .data: return "Biến số"
+        case .custom: return "Khối của tôi"
         }
     }
 
@@ -30,6 +31,7 @@ public enum BlockCategory: String, CaseIterable {
         case .operators: return 0x59C059
         case .pen: return 0x0FBD8C
         case .data: return 0xFF8C1A
+        case .custom: return 0xFF6680
         }
     }
 }
@@ -194,7 +196,7 @@ private func S(_ op: String, _ cat: BlockCategory, _ shape: BlockShape, _ segs: 
 
 public enum BlockCatalog {
 
-    public static func spec(for opcode: String) -> BlockSpec? { index[opcode] }
+    public static func spec(for opcode: String) -> BlockSpec? { index[opcode] ?? customFallback[opcode] }
 
     public static func specs(in category: BlockCategory) -> [BlockSpec] {
         return all.filter { $0.category == category }

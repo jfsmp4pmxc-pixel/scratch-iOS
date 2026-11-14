@@ -225,6 +225,10 @@ public extension Project {
             for (id, l) in t.lists { lists[id] = [l.name, l.items.map { $0.jsonObject }] as [Any] }
             tj["lists"] = lists
 
+            if t.assetsDirty {
+                tj["costumes"] = t.costumes.map { $0.jsonObject() }
+                tj["sounds"] = t.sounds.map { $0.jsonObject() }
+            }
             if t.blocksDirty || t.rawIndex == nil {
                 var bj: [String: Any] = [:]
                 for (id, b) in t.blocks { bj[id] = b.jsonObject(blocks: t.blocks) }

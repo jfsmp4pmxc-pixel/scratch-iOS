@@ -158,5 +158,48 @@ final class ScratchCoreTests: XCTestCase {
         let reopened = try Project(sb3: try rt.exportSB3())
         XCTAssertEqual(reopened.targets.filter { !$0.isStage }.count, 2)
     }
+
+    func testCustomBlockRuns() throws {
+        let project = Project.blank()
+        let rt = Runtime(project: project)
+        let sprite = rt.targets.first(where: { !$0.isStage })!
+        let ctx = blankContext(rt, sprite)
+
+        let def = sprite.createProcedure(name: "tiến", args: [(name: "n", isBoolean: false)], warp: false)
+        let move = sprite.makeBlock(BlockCatalog.spec(for: "motion_movesteps")!, context: ctx)
+        sprite.insertBlock(move.id, after: def.id)
+        let arg = sprite.makeArgumentReporter(name: "n", isBoolean: false)
+        sprite.setInput(block: move.id, input: "STEPS", reporter: arg)
+
+        let hat = sprite.makeBlock(BlockCatalog.spec(for: "event_whenflagclicked")!, context: ctx)
+        sprite.addScript(hat.id)
+        let call = try XCTUnwrap(sprite.makeCall(code: "tiến %s"))
+        sprite.insertBlock(call.id, after: hat.id)
+        let argId = Target.parseJSONStringArray(call.mutation["argumentids"])[0]
+        sprite.setLiteral(block: call.id, input: argId, value: "7")
+
+        let reopened = try Project(sb3: try rt.exportSB3())
+        let rt2 = Runtime(project: reopened)
+        rt2.greenFlag()
+        for _ in 0..<10 { rt2.step() }
+        let s2 = rt2.targets.first(where: { !$0.isStage })!
+        XCTAssertEqual(s2.x, 7, accuracy: 0.01)
+    }
+
+    func testCostumeEditsAreSaved() throws {
+        let project = Project.blank()
+        let rt = Runtime(project: project)
+        let sprite = rt.targets.first(where: { !$0.isStage })!
+        let svg = Data("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"/>".utf8)
+        let c = project.makeCostume(name: "costume1", existing: sprite.costumes.map { $0.name }, data: svg,
+                                    format: "svg", centerX: 5, centerY: 5, bitmapResolution: 1)
+        XCTAssertEqual(c.name, "costume2")
+        sprite.addCostume(c)
+
+        let reopened = try Project(sb3: try rt.exportSB3())
+        let s2 = reopened.targets.first(where: { !$0.isStage })!
+        XCTAssertEqual(s2.costumes.count, 2)
+        XCTAssertEqual(s2.currentCostume, 1)
+    }
 }
 

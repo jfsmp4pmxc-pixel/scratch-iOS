@@ -53,7 +53,7 @@ struct CodeEditorView: View {
             }
             .sheet(isPresented: $store.showPalette) { PaletteView().environmentObject(store) }
             .sheet(item: $store.inputEdit) { req in InputEditSheet(request: req).environmentObject(store) }
-            .sheet(item: $store.namePrompt) { p in NamePromptSheet(prompt: p).environmentObject(store) }
+            .sheet(isPresented: $store.showCustomBlock) { CustomBlockSheet().environmentObject(store) }
         } else {
             Text("Chọn một sprite").foregroundColor(.secondary)
         }
@@ -68,7 +68,7 @@ struct ActionBar: View {
 
     var body: some View {
         if let id = store.selectedBlock, let b = target.blocks[id] {
-            let spec = BlockCatalog.spec(for: b.opcode)
+            let spec = BlockCatalog.spec(for: b, in: target)
             VStack(spacing: 4) {
                 if let name = store.insertInside {
                     Text(name == "SUBSTACK2" ? "Khối mới sẽ chèn vào phần “ngược lại”" : "Khối mới sẽ chèn vào bên trong")
@@ -142,7 +142,7 @@ struct BlockRowView: View {
 
     var body: some View {
         if let b = target.blocks[id] {
-            let spec = BlockCatalog.spec(for: b.opcode)
+            let spec = BlockCatalog.spec(for: b, in: target)
             let color = colorFor(spec)
             let selected = store.selectedBlock == id
             VStack(alignment: .leading, spacing: 0) {
@@ -354,7 +354,7 @@ struct ReporterPill: View {
 
     var body: some View {
         if let b = target.blocks[id] {
-            let spec = BlockCatalog.spec(for: b.opcode)
+            let spec = BlockCatalog.spec(for: b, in: target)
             HStack(spacing: 5) {
                 if let spec = spec {
                     SegmentsView(target: target, block: b, spec: spec)
@@ -481,6 +481,7 @@ struct PaletteView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 8) {
                         if category == .data { dataButtons }
+                        if category == .custom { customSection }
                         ForEach(BlockCatalog.specs(in: category).filter { !$0.isReporter }, id: \.opcode) { spec in
                             Button {
                                 store.insert(spec: spec)
@@ -501,6 +502,27 @@ struct PaletteView: View {
             }
         }
         .navigationViewStyle(.stack)
+    }
+
+    @ViewBuilder
+    private var customSection: some View {
+        Button { openCustomBlockSheet() } label: { Label("Tạo khối mới", systemImage: "plus.circle") }
+            .buttonStyle(.bordered)
+        if let t = store.selectedTarget {
+            ForEach(t.customBlockCodes, id: \.self) { code in
+                let spec = BlockCatalog.callSpec(proccode: code, argIds: [])
+                Button {
+                    store.insertCall(code: code)
+                    store.showPalette = false
+                } label: { SpecPreview(spec: spec) }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func openCustomBlockSheet() {
+        store.showPalette = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { store.showCustomBlock = true }
     }
 
     private var dataButtons: some View {
@@ -615,6 +637,19 @@ struct InputEditSheet: View {
 
     @ViewBuilder
     private var reporterSections: some View {
+        let args = request.target.argumentOptions(forScriptContaining: request.blockId)
+            .filter { booleanOnly ? $0.isBoolean : true }
+        if !args.isEmpty {
+            Section("Đối số của khối này") {
+                ForEach(args.indices, id: \.self) { i in
+                    Button(args[i].name) {
+                        let r = request.target.makeArgumentReporter(name: args[i].name, isBoolean: args[i].isBoolean)
+                        request.target.setInput(block: request.blockId, input: request.input.name, reporter: r)
+                        finish()
+                    }
+                }
+            }
+        }
         if !booleanOnly, let ctx = store.context(for: request.target) {
             let vars = ctx.options(.variables)
             if !vars.isEmpty {
@@ -710,6 +745,56 @@ struct NamePromptSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button("Huỷ") { dismiss() } } }
             .onAppear { name = prompt.initial }
+        }
+        .navigationViewStyle(.stack)
+    }
+}
+
+// MARK: - Tạo khối tự định nghĩa
+
+struct CustomBlockSheet: View {
+    @EnvironmentObject var store: ProjectStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var args: [ArgDraft] = []
+    @State private var warp = false
+
+    struct ArgDraft: Identifiable {
+        let id = UUID()
+        var name: String
+        var isBoolean: Bool
+    }
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section("Tên khối") {
+                    TextField("Ví dụ: vẽ hình vuông", text: $name)
+                }
+                Section("Đối số") {
+                    ForEach($args) { $a in
+                        HStack {
+                            TextField("Tên đối số", text: $a.name)
+                            Text(a.isBoolean ? "logic" : "số/chữ").font(.caption).foregroundColor(.secondary)
+                        }
+                    }
+                    .onDelete { args.remove(atOffsets: $0) }
+                    Button("Thêm đối số số/chữ") { args.append(ArgDraft(name: "đối số\(args.count + 1)", isBoolean: false)) }
+                    Button("Thêm đối số logic") { args.append(ArgDraft(name: "điều kiện\(args.count + 1)", isBoolean: true)) }
+                }
+                Section {
+                    Toggle("Chạy một mạch (không vẽ lại giữa chừng)", isOn: $warp)
+                }
+                Button("Tạo khối") {
+                    let n = name.trimmingCharacters(in: .whitespaces)
+                    guard !n.isEmpty else { return }
+                    store.createProcedure(name: n, args: args.map { (name: $0.name, isBoolean: $0.isBoolean) }, warp: warp)
+                    dismiss()
+                }
+            }
+            .navigationTitle("Khối mới")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button("Huỷ") { dismiss() } } }
         }
         .navigationViewStyle(.stack)
     }

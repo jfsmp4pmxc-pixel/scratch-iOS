@@ -192,16 +192,23 @@ public final class Sound {
     public let assetId: String
     public let md5ext: String
     public let dataFormat: String
+    public let format: String
+    public let rate: Double
+    public let sampleCount: Int
 
     init(json: [String: Any]) {
         name = (json["name"] as? String) ?? "sound"
         assetId = (json["assetId"] as? String) ?? ""
         dataFormat = (json["dataFormat"] as? String) ?? "wav"
         md5ext = (json["md5ext"] as? String) ?? "\(assetId).\(dataFormat)"
+        format = (json["format"] as? String) ?? ""
+        rate = (json["rate"] as? NSNumber)?.doubleValue ?? 22050
+        sampleCount = (json["sampleCount"] as? NSNumber)?.intValue ?? 0
     }
 
     func jsonObject() -> [String: Any] {
-        return ["name": name, "assetId": assetId, "md5ext": md5ext, "dataFormat": dataFormat]
+        return ["name": name, "assetId": assetId, "md5ext": md5ext, "dataFormat": dataFormat,
+                "format": format, "rate": rate, "sampleCount": sampleCount]
     }
 }
 
@@ -281,6 +288,8 @@ public final class Target {
     public var isClone = false
     /// Đặt true khi khối bị sửa: lúc lưu sẽ ghi lại toàn bộ khối của target.
     public var blocksDirty = false
+    /// Đặt true khi danh sách trang phục/âm thanh bị sửa.
+    public var assetsDirty = false
     public weak var cloneParent: Target?
     /// Chỉ số của target trong mảng "targets" của project.json gốc (để lưu lại).
     var rawIndex: Int?

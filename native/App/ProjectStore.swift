@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 import UniformTypeIdentifiers
 import ScratchCore
 
@@ -61,6 +62,9 @@ final class ProjectStore: ObservableObject {
     @Published var showPalette = false
     @Published var inputEdit: InputEditRequest?
     @Published var namePrompt: NamePrompt?
+    @Published var showCustomBlock = false
+    @Published var editorTab = 0                  // 0 = Code, 1 = Trang phục, 2 = Âm thanh
+    private var previewPlayer: AVAudioPlayer?
 
     private var audio: AudioPlayer?
 
@@ -149,32 +153,87 @@ final class ProjectStore: ObservableObject {
         revision += 1
     }
 
-    func importSprite(url: URL) {
-        guard let rt = runtime else { return }
+    private func readImage(url: URL) -> (data: Data, format: String, cx: Double, cy: Double, res: Double)? {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        guard let data = try? Data(contentsOf: url) else { errorMessage = "Không đọc được tệp ảnh."; return }
+        guard let data = try? Data(contentsOf: url) else { errorMessage = "Không đọc được tệp ảnh."; return nil }
         var format = url.pathExtension.lowercased()
         if format == "jpeg" { format = "jpg" }
-        var cx = 0.0, cy = 0.0, res = 1.0
         if format == "svg" {
-            guard let size = svgIntrinsicSize(data) else { errorMessage = "SVG không hợp lệ."; return }
-            cx = size.width / 2; cy = size.height / 2
-        } else if format == "png" || format == "jpg" {
-            guard let img = UIImage(data: data), let cg = img.cgImage else { errorMessage = "Ảnh không hợp lệ."; return }
-            let w = Double(cg.width), h = Double(cg.height)
-            res = max(1, (w / 150).rounded(.up))
-            cx = w / 2; cy = h / 2
-        } else {
-            errorMessage = "Chỉ hỗ trợ ảnh PNG, JPG hoặc SVG."
-            return
+            guard let size = svgIntrinsicSize(data) else { errorMessage = "SVG không hợp lệ."; return nil }
+            return (data, format, size.width / 2, size.height / 2, 1)
         }
-        let name = url.deletingPathExtension().lastPathComponent
-        let t = rt.project.makeSprite(name: name, existingNames: rt.targets.map { $0.name }, assetData: data,
-                                      dataFormat: format, centerX: cx, centerY: cy, bitmapResolution: res)
+        if format == "png" || format == "jpg" {
+            guard let img = UIImage(data: data), let cg = img.cgImage else { errorMessage = "Ảnh không hợp lệ."; return nil }
+            let w = Double(cg.width), h = Double(cg.height)
+            return (data, format, w / 2, h / 2, max(1, (w / 150).rounded(.up)))
+        }
+        errorMessage = "Chỉ hỗ trợ ảnh PNG, JPG hoặc SVG."
+        return nil
+    }
+
+    func importSprite(url: URL) {
+        guard let rt = runtime, let img = readImage(url: url) else { return }
+        let t = rt.project.makeSprite(name: url.deletingPathExtension().lastPathComponent,
+                                      existingNames: rt.targets.map { $0.name }, assetData: img.data,
+                                      dataFormat: img.format, centerX: img.cx, centerY: img.cy, bitmapResolution: img.res)
         rt.addSprite(t)
         select(target: t)
         revision += 1
+    }
+
+    // MARK: Trang phục & âm thanh
+
+    func importCostume(url: URL) {
+        guard let rt = runtime, let t = selectedTarget, let img = readImage(url: url) else { return }
+        // Ảnh nhập vào trang phục giữ độ phân giải gốc nhưng không quá lớn so với sân khấu.
+        let c = rt.project.makeCostume(name: url.deletingPathExtension().lastPathComponent,
+                                       existing: t.costumes.map { $0.name }, data: img.data, format: img.format,
+                                       centerX: img.cx, centerY: img.cy, bitmapResolution: img.res)
+        t.addCostume(c)
+        revision += 1
+    }
+
+    func addPaintedCostume(png: Data, pixelWidth: Double, pixelHeight: Double, resolution: Double) {
+        guard let rt = runtime, let t = selectedTarget else { return }
+        let c = rt.project.makeCostume(name: "vẽ", existing: t.costumes.map { $0.name }, data: png, format: "png",
+                                       centerX: pixelWidth / 2, centerY: pixelHeight / 2, bitmapResolution: resolution)
+        t.addCostume(c)
+        revision += 1
+    }
+
+    func selectCostume(_ i: Int) {
+        guard let t = selectedTarget, t.costumes.indices.contains(i) else { return }
+        t.currentCostume = i
+        t.assetsDirty = true
+        revision += 1
+    }
+
+    func importSound(url: URL) {
+        guard let rt = runtime, let t = selectedTarget else { return }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        let ext = url.pathExtension.lowercased()
+        guard ext == "wav" || ext == "mp3" else { errorMessage = "Chỉ hỗ trợ âm thanh WAV hoặc MP3."; return }
+        guard let data = try? Data(contentsOf: url) else { errorMessage = "Không đọc được tệp âm thanh."; return }
+        var rate = 22050.0
+        var count = 0
+        if let f = try? AVAudioFile(forReading: url) {
+            rate = f.processingFormat.sampleRate
+            count = Int(f.length)
+        }
+        let name = url.deletingPathExtension().lastPathComponent
+        let s = rt.project.makeSound(name: name, existing: t.sounds.map { $0.name }, data: data, format: ext,
+                                     rate: rate, sampleCount: count)
+        t.addSound(s)
+        revision += 1
+    }
+
+    func previewSound(_ s: Sound) {
+        guard let data = runtime?.project.assets[s.md5ext] else { return }
+        previewPlayer?.stop()
+        previewPlayer = try? AVAudioPlayer(data: data)
+        previewPlayer?.play()
     }
 
     func deleteSprite(_ t: Target) {
@@ -214,11 +273,27 @@ final class ProjectStore: ObservableObject {
 
     func insert(spec: BlockSpec) {
         guard let t = selectedTarget, let ctx = context(for: t) else { return }
-        let block = t.makeBlock(spec, context: ctx)
-        var placed = false
+        place(t.makeBlock(spec, context: ctx), spec: spec, in: t)
+    }
 
+    func insertCall(code: String) {
+        guard let t = selectedTarget, let block = t.makeCall(code: code),
+              let spec = BlockCatalog.spec(for: block, in: t) else { return }
+        place(block, spec: spec, in: t)
+    }
+
+    func createProcedure(name: String, args: [(name: String, isBoolean: Bool)], warp: Bool) {
+        guard let t = selectedTarget else { return }
+        let def = t.createProcedure(name: name, args: args, warp: warp)
+        selectedBlock = def.id
+        insertInside = nil
+        revision += 1
+    }
+
+    private func place(_ block: Block, spec: BlockSpec, in t: Target) {
+        var placed = false
         if spec.shape != .hat, let selId = selectedBlock, let sel = t.blocks[selId], !sel.shadow {
-            let selSpec = BlockCatalog.spec(for: sel.opcode)
+            let selSpec = BlockCatalog.spec(for: sel, in: t)
             if let name = insertInside, selSpec?.substackNames.contains(name) == true {
                 var hasChild = false
                 if case .block? = sel.inputs[name] { hasChild = true }
